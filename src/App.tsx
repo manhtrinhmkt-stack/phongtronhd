@@ -16,16 +16,19 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth } from './firebase';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+
+// Components
+import Login from './components/Login';
 
 // Utility for tailwind classes
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// Pages (to be implemented)
+// Pages
 import Dashboard from './pages/Dashboard';
 import Rooms from './pages/Rooms';
 import Tenants from './pages/Tenants';
@@ -49,15 +52,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  const handleLogin = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error('Login error:', error);
-    }
-  };
-
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -79,29 +73,7 @@ export default function App() {
   }
 
   if (!user) {
-    return (
-      <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center p-4">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-stone-200"
-        >
-          <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <Home className="w-8 h-8 text-emerald-600" />
-          </div>
-          <h1 className="text-3xl font-bold text-stone-900 mb-2">RoomMaster</h1>
-          <p className="text-stone-500 mb-8">Hệ thống quản lý phòng trọ thông minh & hiệu quả</p>
-          
-          <button
-            onClick={handleLogin}
-            className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg shadow-emerald-200"
-          >
-            <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
-            Đăng nhập với Google
-          </button>
-        </motion.div>
-      </div>
-    );
+    return <Login />;
   }
 
   const navItems = [
@@ -202,14 +174,14 @@ export default function App() {
             </h2>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium text-stone-900">{user.displayName}</p>
+              <p className="text-sm font-medium text-stone-900">{user.displayName || user.email?.split('@')[0] || 'Quản trị viên'}</p>
               <p className="text-xs text-stone-500">{user.email}</p>
             </div>
             <img 
-              src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} 
-              className="w-10 h-10 rounded-full border border-stone-200"
+              src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || user.email?.split('@')[0] || 'Admin')}&background=10b981&color=fff`} 
+              className="w-10 h-10 rounded-full border border-stone-200 object-cover"
               alt="Avatar"
               referrerPolicy="no-referrer"
             />
