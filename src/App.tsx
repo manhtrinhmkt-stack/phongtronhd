@@ -176,11 +176,17 @@ export default function App() {
           
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium text-stone-900">{user.displayName || user.email?.split('@')[0] || 'Quản trị viên'}</p>
-              <p className="text-xs text-stone-500">{user.email}</p>
+              <p className="text-sm font-medium text-stone-900">
+                {user.displayName || (user.email ? user.email.replace('@roommaster.local', '') : 'Quản trị viên')}
+              </p>
+              <p className="text-xs text-stone-500">
+                {user.email?.endsWith('@roommaster.local') 
+                  ? `@${user.email.replace('@roommaster.local', '')}` 
+                  : user.email}
+              </p>
             </div>
             <img 
-              src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || user.email?.split('@')[0] || 'Admin')}&background=10b981&color=fff`} 
+              src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || (user.email ? user.email.replace('@roommaster.local', '') : 'Admin'))}&background=10b981&color=fff`} 
               className="w-10 h-10 rounded-full border border-stone-200 object-cover"
               alt="Avatar"
               referrerPolicy="no-referrer"
