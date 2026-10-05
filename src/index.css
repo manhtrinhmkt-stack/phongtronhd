@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    font-size: 17px;
+  }
+  @screen md {
+    html {
+      font-size: 16px;
+    }
+  }
+}

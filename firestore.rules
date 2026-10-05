@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // For this app, we assume a single landlord (the user) manages everything.
+    // In a multi-landlord scenario, we would scope by landlordId.
+    // For now, we'll allow the authenticated user to manage all data.
+
+    match /{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

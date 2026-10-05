@@ -1,0 +1,122 @@
+{
+  "entities": {
+    "Room": {
+      "title": "Room",
+      "description": "Information about a rental room",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Room name or number" },
+        "status": { "type": "string", "enum": ["Empty", "Rented", "Repairing"], "description": "Current status of the room" },
+        "price": { "type": "number", "description": "Monthly rent price" },
+        "note": { "type": "string", "description": "Note about the room" },
+        "currentTenantId": { "type": "string", "description": "ID of the current tenant" },
+        "currentContractId": { "type": "string", "description": "ID of the current active contract" }
+      },
+      "required": ["name", "status", "price"]
+    },
+    "Tenant": {
+      "title": "Tenant",
+      "description": "Information about a tenant",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "idNumber": { "type": "string", "description": "CCCD/ID number" },
+        "tempResidenceStatus": { "type": "string", "description": "Temporary residence registration status" },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "idNumber": { "type": "string" },
+              "relation": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["name", "phone"]
+    },
+    "Contract": {
+      "title": "Contract",
+      "description": "Rental contract details",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "deposit": { "type": "number" },
+        "status": { "type": "string", "enum": ["Active", "Expired", "Terminated"] }
+      },
+      "required": ["roomId", "tenantId", "startDate", "endDate", "status"]
+    },
+    "UtilityReading": {
+      "title": "UtilityReading",
+      "description": "Monthly electricity and water readings",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "month": { "type": "number" },
+        "year": { "type": "number" },
+        "electricityStart": { "type": "number" },
+        "electricityEnd": { "type": "number" },
+        "waterStart": { "type": "number" },
+        "waterEnd": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roomId", "month", "year"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "Additional services like wifi, trash, etc.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "unit": { "type": "string", "enum": ["room", "person", "usage"] }
+      },
+      "required": ["name", "price", "unit"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Monthly invoice for a room",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "month": { "type": "number" },
+        "year": { "type": "number" },
+        "rentCost": { "type": "number" },
+        "electricityCost": { "type": "number" },
+        "waterCost": { "type": "number" },
+        "serviceCosts": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["Paid", "Unpaid"] },
+        "textTemplate": { "type": "string" }
+      },
+      "required": ["roomId", "month", "year", "totalAmount", "status"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Maintenance or repair expenses",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "description": { "type": "string" }
+      },
+      "required": ["type", "amount", "date"]
+    }
+  },
+  "firestore": {
+    "rooms": { "schema": "Room", "description": "Collection of rooms" },
+    "tenants": { "schema": "Tenant", "description": "Collection of tenants" },
+    "contracts": { "schema": "Contract", "description": "Collection of contracts" },
+    "utilityReadings": { "schema": "UtilityReading", "description": "Collection of utility readings" },
+    "services": { "schema": "Service", "description": "Collection of services" },
+    "invoices": { "schema": "Invoice", "description": "Collection of invoices" },
+    "expenses": { "schema": "Expense", "description": "Collection of expenses" }
+  }
+}
