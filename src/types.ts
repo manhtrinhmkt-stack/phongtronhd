@@ -100,6 +100,12 @@ export interface AppSettings {
   bankAccountName?: string;
 }
 
+export interface SyncOptions {
+  syncElectricity?: boolean;
+  syncWater?: boolean;
+  syncServices?: boolean;
+}
+
 export const formatNumber = (num: number) => {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 };

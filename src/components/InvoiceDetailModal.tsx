@@ -99,7 +99,7 @@ export default function InvoiceDetailModal({
               </span>
               <div className="flex items-center gap-1.5 font-bold text-stone-900 text-xs sm:text-sm">
                 <User className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span className="truncate">{tenant?.name || invoice.tenantName || room?.tenantName || 'Khách thuê'}</span>
+                <span className="truncate">{tenant?.name || invoice.tenantName || room?.tenantName || '---'}</span>
               </div>
             </div>
           </div>
@@ -169,7 +169,7 @@ export default function InvoiceDetailModal({
                   <span className="text-stone-700 font-semibold block">Tiền nước</span>
                   {invoice.waterUsage !== undefined && (
                     <span className="text-[11px] text-stone-400 font-semibold">
-                      {invoice.waterUsage} m³
+                      {invoice.waterUsage} {invoice.waterCalculationMethod === 'person' ? 'người' : 'm³'}
                     </span>
                   )}
                 </div>

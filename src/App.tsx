@@ -15,6 +15,7 @@ import { twMerge } from 'tailwind-merge';
 
 // Components
 import Login from './components/Login';
+import { PWAInstallButton } from './components/PWAInstallButton';
 
 // Utility for tailwind classes
 function cn(...inputs: ClassValue[]) {
@@ -94,7 +95,7 @@ export default function App() {
             <div className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center shrink-0 shadow-md shadow-emerald-900/30">
               <Home className="w-5 h-5 text-white" />
             </div>
-            <span className="text-white font-black text-xl tracking-tight whitespace-nowrap">RoomMaster</span>
+            <span className="text-white font-black text-xl tracking-tight whitespace-nowrap">Quản lý phòng trọ</span>
           </div>
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -158,7 +159,8 @@ export default function App() {
             </h1>
           </div>
           
-          <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <PWAInstallButton />
             <div className="text-right hidden sm:block">
               <p className="text-xs sm:text-sm font-bold text-stone-900 leading-tight">
                 {user.displayName || (user.email ? user.email.replace('@roommaster.local', '') : 'Quản trị viên')}

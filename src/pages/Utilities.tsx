@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { firebaseService } from '../firebaseService';
-import { Room, UtilityReading, Service, AppSettings, formatNumber, naturalCompare } from '../types';
-import { Plus, Zap, Droplets, Calculator, Settings, X, Trash2, CreditCard, RefreshCw, CheckCircle2, Wifi } from 'lucide-react';
+import { Room, UtilityReading, Service, AppSettings, Invoice, formatNumber, naturalCompare } from '../types';
+import { Plus, Zap, Droplets, Calculator, Settings, X, Trash2, CreditCard, RefreshCw, CheckCircle2, Wifi, CheckSquare, Square } from 'lucide-react';
 import FormattedNumericInput from '../components/FormattedNumericInput';
 import ConfirmModal from '../components/ConfirmModal';
+import InvoiceDetailModal from '../components/InvoiceDetailModal';
 
 export default function Utilities() {
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -17,6 +18,13 @@ export default function Utilities() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+  const [syncOptions, setSyncOptions] = useState({
+    syncElectricity: true,
+    syncWater: true,
+    syncServices: false
+  });
 
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
@@ -107,8 +115,8 @@ export default function Utilities() {
   const handleSaveSettingsAndSync = async (syncAllRooms: boolean) => {
     await firebaseService.updateSettings(settings);
     if (syncAllRooms) {
-      await firebaseService.syncGlobalToAllRooms(settings, globalServices);
-      setSyncNotice('Đã lưu cài đặt & đồng bộ thành công sang tất cả các phòng!');
+      await firebaseService.syncGlobalToAllRooms(settings, globalServices, syncOptions);
+      setSyncNotice('Đã lưu cài đặt & đồng bộ theo tùy chọn sang các phòng!');
     } else {
       setSyncNotice('Đã lưu cài đặt mẫu!');
     }
@@ -143,9 +151,7 @@ export default function Utilities() {
     }
 
     // 4. Calculate service costs
-    const activeServices = (room.services && room.services.length > 0) 
-      ? room.services 
-      : globalServices;
+    const activeServices = room.services || [];
 
     const serviceCosts = activeServices.map(s => {
       let cost = s.price;
@@ -172,12 +178,12 @@ export default function Utilities() {
 
     const formattedBankNumber = settings.bankAccountNumber?.replace(/(\d{4})(\d{3})(\d+)/, '$1 $2 $3') || settings.bankAccountNumber;
 
+    // Note: User requested no "Nội dung" line in bank transfer section
     const bankInfo = settings.bankAccountNumber ? `----------------------------------
 THÔNG TIN CHUYỂN KHOẢN:
 - Ngân hàng: ${settings.bankName}
 - Số TK: ${formattedBankNumber}
-- Chủ tài khoản: ${settings.bankAccountName}
-- Nội dung: Thanh toan phong ${room.name} thang ${formData.month}` : '';
+- Chủ tài khoản: ${settings.bankAccountName}` : '';
 
     const tenantInfoText = room.tenantName ? ` (${room.tenantName})` : '';
 
@@ -196,9 +202,9 @@ ${bankInfo}
     `.trim();
 
     // 6. Create invoice
-    await firebaseService.addInvoice({
+    const newInvoiceId = await firebaseService.addInvoice({
       roomId: formData.roomId,
-      tenantName: room.tenantName || 'Khách thuê',
+      tenantName: room.tenantName || '',
       month: formData.month,
       year: formData.year,
       rentCost: room.price,
@@ -214,6 +220,25 @@ ${bankInfo}
     });
 
     closeModal();
+
+    // Immediately open InvoiceDetailModal so user can review and copy message
+    setSelectedInvoice({
+      id: newInvoiceId,
+      roomId: formData.roomId,
+      tenantName: room.tenantName || '',
+      month: formData.month,
+      year: formData.year,
+      rentCost: room.price,
+      electricityCost,
+      waterCost,
+      waterUsage: waterCalcMethod === 'usage' ? waterUsage : occupantCount,
+      electricityUsage,
+      waterCalculationMethod: waterCalcMethod,
+      serviceCosts,
+      totalAmount,
+      status: 'Unpaid',
+      textTemplate
+    });
   };
 
   const closeModal = () => setIsModalOpen(false);
@@ -306,8 +331,8 @@ ${bankInfo}
                               <span className="block text-[11px] text-stone-400 font-normal">{reading.electricityStart} → {reading.electricityEnd}</span>
                             </td>
                             <td className="px-6 py-4 text-sm font-semibold text-stone-800">
-                              {reading.occupantCount && reading.waterEnd === reading.waterStart ? (
-                                <span className="font-bold text-blue-600">{reading.occupantCount} người</span>
+                              {reading.waterCalculationMethod === 'person' || (reading.occupantCount && reading.waterEnd === reading.waterStart) ? (
+                                <span className="font-bold text-blue-600">{reading.occupantCount || 1} người</span>
                               ) : (
                                 <>
                                   <span className="font-bold text-blue-600">{waterUsage} m³</span>
@@ -401,8 +426,14 @@ ${bankInfo}
                     <span className="block text-[10px] text-amber-700">{reading.electricityStart} → {reading.electricityEnd}</span>
                   </div>
                   <div className="bg-blue-50 p-2 rounded-xl text-blue-900 border border-blue-100/80">
-                    💧 Nước: <strong className="font-extrabold">{waterUsage} m³</strong>
-                    <span className="block text-[10px] text-blue-700">{reading.waterStart} → {reading.waterEnd}</span>
+                    💧 Nước: {reading.waterCalculationMethod === 'person' || (reading.occupantCount && reading.waterEnd === reading.waterStart) ? (
+                      <strong className="font-extrabold">{reading.occupantCount || 1} người</strong>
+                    ) : (
+                      <>
+                        <strong className="font-extrabold">{waterUsage} m³</strong>
+                        <span className="block text-[10px] text-blue-700">{reading.waterStart} → {reading.waterEnd}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -677,6 +708,43 @@ ${bankInfo}
                 </div>
               </div>
 
+              {/* SECTION 4: Tùy chọn Đồng bộ sang các phòng */}
+              <div className="space-y-3 bg-emerald-50/70 p-4 rounded-xl border border-emerald-200">
+                <h4 className="text-xs font-bold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5 border-b border-emerald-200/80 pb-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  4. Chọn các mục cần đồng bộ sang toàn bộ phòng
+                </h4>
+                <div className="space-y-2 text-xs font-bold text-stone-800">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input 
+                      type="checkbox"
+                      checked={syncOptions.syncElectricity}
+                      onChange={(e) => setSyncOptions({...syncOptions, syncElectricity: e.target.checked})}
+                      className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <span>Đồng bộ Đơn giá Điện ({formatNumber(settings.electricityRate)}đ/kWh)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input 
+                      type="checkbox"
+                      checked={syncOptions.syncWater}
+                      onChange={(e) => setSyncOptions({...syncOptions, syncWater: e.target.checked})}
+                      className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <span>Đồng bộ Đơn giá & Hình thức Nước ({formatNumber(settings.waterRate)}đ)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input 
+                      type="checkbox"
+                      checked={syncOptions.syncServices}
+                      onChange={(e) => setSyncOptions({...syncOptions, syncServices: e.target.checked})}
+                      className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <span>Đồng bộ Phí dịch vụ mẫu (Wifi, Rác...) sang tất cả phòng</span>
+                  </label>
+                </div>
+              </div>
+
               {/* Action Buttons */}
               <div className="space-y-2 pt-2 border-t border-stone-100">
                 <button 
@@ -699,6 +767,15 @@ ${bankInfo}
             </div>
           </div>
         </div>
+      )}
+
+      {selectedInvoice && (
+        <InvoiceDetailModal
+          invoice={selectedInvoice}
+          rooms={rooms}
+          tenants={[]}
+          onClose={() => setSelectedInvoice(null)}
+        />
       )}
 
       <ConfirmModal 

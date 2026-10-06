@@ -298,6 +298,7 @@ export default function Dashboard() {
         isOpen={isReadingModalOpen}
         rooms={rooms}
         onClose={() => setIsReadingModalOpen(false)}
+        onInvoiceCreated={(createdInvoice) => setSelectedInvoice(createdInvoice)}
       />
 
       <InvoiceDetailModal 

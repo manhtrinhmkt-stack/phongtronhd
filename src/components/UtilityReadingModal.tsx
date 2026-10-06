@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Room, UtilityReading, AppSettings, Service, formatNumber, naturalCompare } from '../types';
+import { Room, UtilityReading, AppSettings, Service, Invoice, formatNumber, naturalCompare } from '../types';
 import { firebaseService } from '../firebaseService';
 import { X, Zap, Droplets, Calculator } from 'lucide-react';
 import FormattedNumericInput from './FormattedNumericInput';
@@ -9,13 +9,15 @@ interface UtilityReadingModalProps {
   rooms: Room[];
   onClose: () => void;
   onSuccess?: () => void;
+  onInvoiceCreated?: (invoice: Invoice) => void;
 }
 
 export default function UtilityReadingModal({
   isOpen,
   rooms,
   onClose,
-  onSuccess
+  onSuccess,
+  onInvoiceCreated
 }: UtilityReadingModalProps) {
   const [readings, setReadings] = useState<UtilityReading[]>([]);
   const [globalServices, setGlobalServices] = useState<Service[]>([]);
@@ -98,9 +100,7 @@ export default function UtilityReadingModal({
     }
 
     // 4. Calculate service costs
-    const activeServices = (room.services && room.services.length > 0) 
-      ? room.services 
-      : globalServices;
+    const activeServices = room.services || [];
 
     const serviceCosts = activeServices.map(s => {
       let cost = s.price;
@@ -127,12 +127,12 @@ export default function UtilityReadingModal({
 
     const formattedBankNumber = settings.bankAccountNumber?.replace(/(\d{4})(\d{3})(\d+)/, '$1 $2 $3') || settings.bankAccountNumber;
 
+    // User requested no "Nội dung" line in bank transfer section
     const bankInfo = settings.bankAccountNumber ? `----------------------------------
 THÔNG TIN CHUYỂN KHOẢN:
 - Ngân hàng: ${settings.bankName}
 - Số TK: ${formattedBankNumber}
-- Chủ tài khoản: ${settings.bankAccountName}
-- Nội dung: Thanh toan phong ${room.name} thang ${formData.month}` : '';
+- Chủ tài khoản: ${settings.bankAccountName}` : '';
 
     const tenantInfoText = room.tenantName ? ` (${room.tenantName})` : '';
 
@@ -151,9 +151,9 @@ ${bankInfo}
     `.trim();
 
     // 6. Create invoice
-    await firebaseService.addInvoice({
+    const newInvoiceId = await firebaseService.addInvoice({
       roomId: formData.roomId,
-      tenantName: room.tenantName || 'Khách thuê',
+      tenantName: room.tenantName || '',
       month: formData.month,
       year: formData.year,
       rentCost: room.price,
@@ -168,8 +168,30 @@ ${bankInfo}
       textTemplate
     });
 
+    const createdInvoice: Invoice = {
+      id: newInvoiceId,
+      roomId: formData.roomId,
+      tenantName: room.tenantName || '',
+      month: formData.month,
+      year: formData.year,
+      rentCost: room.price,
+      electricityCost,
+      waterCost,
+      waterUsage: waterCalcMethod === 'usage' ? waterUsage : occupantCount,
+      electricityUsage,
+      waterCalculationMethod: waterCalcMethod,
+      serviceCosts,
+      totalAmount,
+      status: 'Unpaid',
+      textTemplate
+    };
+
     onClose();
-    if (onSuccess) onSuccess();
+    if (onInvoiceCreated) {
+      onInvoiceCreated(createdInvoice);
+    } else if (onSuccess) {
+      onSuccess();
+    }
   };
 
   const rentedRooms = rooms

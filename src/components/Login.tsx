@@ -91,7 +91,7 @@ export default function Login() {
             <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
               <Home className="w-8 h-8 text-emerald-600" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">RoomMaster</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">Quản lý phòng trọ</h1>
             <p className="text-sm font-semibold text-stone-500 mt-1">Đăng nhập vào hệ thống quản lý phòng trọ</p>
           </div>
 

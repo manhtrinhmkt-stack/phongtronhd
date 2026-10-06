@@ -13,7 +13,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Room, Tenant, Contract, UtilityReading, Service, Invoice, Expense, AppSettings } from './types';
+import { Room, Tenant, Contract, UtilityReading, Service, Invoice, Expense, AppSettings, SyncOptions } from './types';
 
 // Generic handle error function as per guidelines
 const handleFirestoreError = (error: any, operation: string, path: string) => {
@@ -168,7 +168,8 @@ export const firebaseService = {
   },
   addInvoice: async (invoice: Omit<Invoice, 'id'>) => {
     try {
-      return await addDoc(collection(db, 'invoices'), invoice);
+      const docRef = await addDoc(collection(db, 'invoices'), invoice);
+      return docRef.id;
     } catch (err) { handleFirestoreError(err, 'add', 'invoices'); }
   },
   deleteInvoice: async (id: string) => {
@@ -252,24 +253,57 @@ export const firebaseService = {
     } catch (err) { handleFirestoreError(err, 'update', 'settings/global'); }
   },
 
-  // Sync Global Settings & Global Template Services to ALL Rooms in Firestore
-  syncGlobalToAllRooms: async (settings: AppSettings, servicesList: Service[]) => {
+  // Sync Global Settings to ALL Rooms (with selective options for electricity, water, services)
+  syncGlobalToAllRooms: async (settings: AppSettings, servicesList: Service[], options?: SyncOptions) => {
     try {
       const roomDocs = await getDocs(collection(db, 'rooms'));
       const batch = writeBatch(db);
-      const formattedServices = servicesList.map(s => ({
-        name: s.name,
-        price: s.price,
-        unit: s.unit
-      }));
+
+      const doElectricity = options ? options.syncElectricity ?? true : true;
+      const doWater = options ? options.syncWater ?? true : true;
+      const doServices = options ? options.syncServices ?? false : true;
 
       roomDocs.forEach((roomDoc) => {
-        batch.update(roomDoc.ref, {
-          electricityRate: settings.electricityRate ?? 3500,
-          waterRate: settings.waterRate ?? 20000,
-          waterCalculationMethod: settings.waterCalculationMethod || 'usage',
-          services: formattedServices
-        });
+        const roomData = roomDoc.data() as Room;
+        const updatePayload: Record<string, any> = {};
+
+        if (doElectricity) {
+          updatePayload.electricityRate = settings.electricityRate ?? 3500;
+        }
+
+        if (doWater) {
+          updatePayload.waterRate = settings.waterRate ?? 20000;
+          updatePayload.waterCalculationMethod = settings.waterCalculationMethod || 'usage';
+        }
+
+        if (doServices) {
+          let updatedServices = roomData.services || [];
+          if (updatedServices.length > 0) {
+            updatedServices = updatedServices.map(s => {
+              const matchedTemplate = servicesList.find(ts => ts.name === s.name);
+              if (matchedTemplate) {
+                return {
+                  name: s.name,
+                  price: matchedTemplate.price,
+                  unit: matchedTemplate.unit
+                };
+              }
+              return s;
+            });
+          } else {
+            // Apply global template services
+            updatedServices = servicesList.map(s => ({
+              name: s.name,
+              price: s.price,
+              unit: s.unit
+            }));
+          }
+          updatePayload.services = updatedServices;
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+          batch.update(roomDoc.ref, updatePayload);
+        }
       });
 
       await batch.commit();

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#10b981"/>
+  <!-- Chimney -->
+  <rect x="330" y="130" width="30" height="70" rx="4" fill="#ffffff" opacity="0.9"/>
+  <!-- House Roof & Body -->
+  <path d="M256 100 L90 235 C82 243 88 256 99 256 L130 256 L130 394 C130 405 139 414 150 414 L220 414 L220 290 L292 290 L292 414 L362 414 C373 414 382 405 382 394 L382 256 L413 256 C424 256 430 243 422 235 Z" fill="#ffffff"/>
+  <!-- Window or Roof Accent -->
+  <circle cx="256" cy="210" r="24" fill="#10b981"/>
+</svg>

@@ -95,9 +95,7 @@ export default function Rooms() {
         waterRate: room.waterRate ?? globalSettings.waterRate ?? 20000,
         waterCalculationMethod: room.waterCalculationMethod || globalSettings.waterCalculationMethod || 'usage',
         occupantCount: room.occupantCount ?? 1,
-        services: (room.services && room.services.length > 0)
-          ? room.services
-          : globalServices.map(s => ({ name: s.name, price: s.price, unit: s.unit })),
+        services: room.services || [],
         note: room.note || ''
       });
     } else {
@@ -112,7 +110,7 @@ export default function Rooms() {
         waterRate: globalSettings.waterRate ?? 20000,
         waterCalculationMethod: globalSettings.waterCalculationMethod || 'usage',
         occupantCount: 1,
-        services: globalServices.map(s => ({ name: s.name, price: s.price, unit: s.unit })),
+        services: [],
         note: ''
       });
     }
@@ -127,25 +125,37 @@ export default function Rooms() {
   };
 
   const handleSyncRoomWithGlobalDefaults = () => {
+    const updatedServices = (formData.services || []).map(s => {
+      const matchedTemplate = globalServices.find(gs => gs.name === s.name);
+      if (matchedTemplate) {
+        return { name: s.name, price: matchedTemplate.price, unit: matchedTemplate.unit };
+      }
+      return s;
+    });
+
     setFormData({
       ...formData,
       electricityRate: globalSettings.electricityRate ?? 3500,
       waterRate: globalSettings.waterRate ?? 20000,
       waterCalculationMethod: globalSettings.waterCalculationMethod || 'usage',
-      services: globalServices.map(s => ({ name: s.name, price: s.price, unit: s.unit }))
+      services: updatedServices
     });
-    setSyncNotice('Đã áp dụng biểu giá & dịch vụ mẫu chung!');
+    setSyncNotice('Đã nạp biểu giá điện nước mẫu!');
     setTimeout(() => setSyncNotice(null), 3000);
   };
 
   const handleSyncAllRoomsGlobal = async () => {
     setConfirmConfig({
       isOpen: true,
-      title: 'Đồng bộ toàn bộ danh mục phòng',
-      message: `Đồng bộ đơn giá điện (${formatNumber(globalSettings.electricityRate)}đ), nước (${formatNumber(globalSettings.waterRate)}đ) và ${globalServices.length} dịch vụ mẫu sang TẤT CẢ các phòng hiện tại?`,
+      title: 'Đồng bộ biểu giá điện & nước',
+      message: `Đồng bộ đơn giá điện (${formatNumber(globalSettings.electricityRate)}đ/kWh) và nước (${formatNumber(globalSettings.waterRate)}đ) sang TẤT CẢ các phòng? (Không làm thay đổi các dịch vụ phòng đã cài riêng)`,
       onConfirm: async () => {
-        await firebaseService.syncGlobalToAllRooms(globalSettings, globalServices);
-        setSyncNotice('Đã đồng bộ biểu giá mẫu sang tất cả các phòng!');
+        await firebaseService.syncGlobalToAllRooms(globalSettings, globalServices, {
+          syncElectricity: true,
+          syncWater: true,
+          syncServices: false
+        });
+        setSyncNotice('Đã đồng bộ biểu giá điện nước mẫu sang tất cả các phòng!');
         setTimeout(() => setSyncNotice(null), 4000);
       }
     });
@@ -321,7 +331,7 @@ export default function Rooms() {
           const statusText = room.status === 'Rented' ? 'Đã thuê' :
                              room.status === 'Empty' ? 'Phòng trống' : 'Đang sửa';
 
-          const activeRoomServices = (room.services && room.services.length > 0) ? room.services : globalServices;
+          const activeRoomServices = room.services || [];
 
           return (
             <div key={room.id} className="bg-white rounded-2xl border border-stone-200 p-4 sm:p-5 shadow-2xs hover:shadow-md transition-shadow flex flex-col justify-between space-y-3.5">
@@ -349,7 +359,7 @@ export default function Rooms() {
                     <div className="bg-emerald-50/70 p-2.5 sm:p-3 rounded-xl border border-emerald-100 space-y-1">
                       <div className="flex items-center gap-2 text-xs font-bold text-emerald-900">
                         <User className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span className="truncate">Người thuê: {room.tenantName || 'Chưa nhập tên'}</span>
+                        <span className="truncate">{room.tenantName ? `Người thuê: ${room.tenantName}` : 'Đã có người ở'}</span>
                       </div>
                       {room.tenantPhone && (
                         <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 pl-5">
