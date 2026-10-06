@@ -34,12 +34,29 @@ export default function Finance() {
     description: ''
   });
 
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
+    let invoicesLoaded = false;
+    let expensesLoaded = false;
+
+    const checkDone = () => {
+      if (invoicesLoaded && expensesLoaded) {
+        setLoading(false);
+      }
+    };
+
     const unsubInvoices = firebaseService.subscribeInvoices((invs) => {
       setInvoices(invs);
       setSelectedInvoice(prev => prev ? invs.find(i => i.id === prev.id) || null : null);
+      invoicesLoaded = true;
+      checkDone();
     });
-    const unsubExpenses = firebaseService.subscribeExpenses(setExpenses);
+    const unsubExpenses = firebaseService.subscribeExpenses((exps) => {
+      setExpenses(exps);
+      expensesLoaded = true;
+      checkDone();
+    });
     const unsubRooms = firebaseService.subscribeRooms(setRooms);
     const unsubTenants = firebaseService.subscribeTenants(setTenants);
     return () => {
@@ -87,6 +104,25 @@ export default function Finance() {
     setIsModalOpen(false);
     setNewExpense({ type: 'Sửa chữa', amount: 0, date: format(new Date(), 'yyyy-MM-dd'), description: '' });
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-4 sm:space-y-8 animate-pulse">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-white p-4 rounded-2xl border border-stone-200 h-28 flex flex-col justify-between">
+              <div className="w-8 h-8 bg-stone-200 rounded-xl" />
+              <div className="w-24 h-6 bg-stone-300 rounded-md" />
+            </div>
+          ))}
+        </div>
+        <div className="bg-white rounded-2xl border border-stone-200 h-72 p-6 space-y-4">
+          <div className="w-48 h-5 bg-stone-200 rounded-md" />
+          <div className="w-full h-48 bg-stone-100 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 sm:space-y-8">

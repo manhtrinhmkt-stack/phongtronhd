@@ -1,16 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { firebaseService } from '../firebaseService';
-import { Room, formatNumber, naturalCompare } from '../types';
-import { Plus, Edit2, Trash2, Search, Filter, Home, FileText, Tag, X, User, Phone, Zap, Droplets, Wifi, PlusCircle } from 'lucide-react';
+import { Room, AppSettings, Service, formatNumber, naturalCompare } from '../types';
+import { Plus, Edit2, Trash2, Search, Filter, Home, FileText, Tag, X, User, Phone, Zap, Droplets, Wifi, PlusCircle, RefreshCw, CheckCircle2, CheckSquare, Square } from 'lucide-react';
 import FormattedNumericInput from '../components/FormattedNumericInput';
 import ConfirmModal from '../components/ConfirmModal';
 
 export default function Rooms() {
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [globalSettings, setGlobalSettings] = useState<AppSettings>({
+    electricityRate: 3500,
+    waterRate: 20000,
+    waterCalculationMethod: 'usage'
+  });
+  const [globalServices, setGlobalServices] = useState<Service[]>([]);
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -23,7 +32,7 @@ export default function Rooms() {
     onConfirm: () => {}
   });
 
-  // State for adding a new service inside the room modal
+  // State for adding a new custom service inside the room modal
   const [newServiceName, setNewServiceName] = useState('');
   const [newServicePrice, setNewServicePrice] = useState(0);
   const [newServiceUnit, setNewServiceUnit] = useState<'room' | 'person'>('room');
@@ -39,16 +48,28 @@ export default function Rooms() {
     waterRate: 20000,
     waterCalculationMethod: 'usage',
     occupantCount: 1,
-    services: [
-      { name: 'Wifi', price: 100000, unit: 'room' },
-      { name: 'Rác & Vệ sinh', price: 30000, unit: 'room' }
-    ],
+    services: [],
     note: ''
   });
 
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    const unsub = firebaseService.subscribeRooms(setRooms);
-    return () => unsub();
+    let roomsLoaded = false;
+    const unsubRooms = firebaseService.subscribeRooms((r) => {
+      setRooms(r);
+      if (!roomsLoaded) {
+        roomsLoaded = true;
+        setLoading(false);
+      }
+    });
+    const unsubSettings = firebaseService.subscribeSettings(setGlobalSettings);
+    const unsubServices = firebaseService.subscribeServices(setGlobalServices);
+    return () => {
+      unsubRooms();
+      unsubSettings();
+      unsubServices();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,14 +91,13 @@ export default function Rooms() {
         price: room.price || 0,
         tenantName: room.tenantName || '',
         tenantPhone: room.tenantPhone || '',
-        electricityRate: room.electricityRate ?? 3500,
-        waterRate: room.waterRate ?? 20000,
-        waterCalculationMethod: room.waterCalculationMethod || 'usage',
+        electricityRate: room.electricityRate ?? globalSettings.electricityRate ?? 3500,
+        waterRate: room.waterRate ?? globalSettings.waterRate ?? 20000,
+        waterCalculationMethod: room.waterCalculationMethod || globalSettings.waterCalculationMethod || 'usage',
         occupantCount: room.occupantCount ?? 1,
-        services: room.services || [
-          { name: 'Wifi', price: 100000, unit: 'room' },
-          { name: 'Rác & Vệ sinh', price: 30000, unit: 'room' }
-        ],
+        services: (room.services && room.services.length > 0)
+          ? room.services
+          : globalServices.map(s => ({ name: s.name, price: s.price, unit: s.unit })),
         note: room.note || ''
       });
     } else {
@@ -88,14 +108,11 @@ export default function Rooms() {
         price: 0,
         tenantName: '',
         tenantPhone: '',
-        electricityRate: 3500,
-        waterRate: 20000,
-        waterCalculationMethod: 'usage',
+        electricityRate: globalSettings.electricityRate ?? 3500,
+        waterRate: globalSettings.waterRate ?? 20000,
+        waterCalculationMethod: globalSettings.waterCalculationMethod || 'usage',
         occupantCount: 1,
-        services: [
-          { name: 'Wifi', price: 100000, unit: 'room' },
-          { name: 'Rác & Vệ sinh', price: 30000, unit: 'room' }
-        ],
+        services: globalServices.map(s => ({ name: s.name, price: s.price, unit: s.unit })),
         note: ''
       });
     }
@@ -109,7 +126,88 @@ export default function Rooms() {
     setEditingRoom(null);
   };
 
-  const handleAddServiceToRoom = () => {
+  const handleSyncRoomWithGlobalDefaults = () => {
+    setFormData({
+      ...formData,
+      electricityRate: globalSettings.electricityRate ?? 3500,
+      waterRate: globalSettings.waterRate ?? 20000,
+      waterCalculationMethod: globalSettings.waterCalculationMethod || 'usage',
+      services: globalServices.map(s => ({ name: s.name, price: s.price, unit: s.unit }))
+    });
+    setSyncNotice('Đã áp dụng biểu giá & dịch vụ mẫu chung!');
+    setTimeout(() => setSyncNotice(null), 3000);
+  };
+
+  const handleSyncAllRoomsGlobal = async () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Đồng bộ toàn bộ danh mục phòng',
+      message: `Đồng bộ đơn giá điện (${formatNumber(globalSettings.electricityRate)}đ), nước (${formatNumber(globalSettings.waterRate)}đ) và ${globalServices.length} dịch vụ mẫu sang TẤT CẢ các phòng hiện tại?`,
+      onConfirm: async () => {
+        await firebaseService.syncGlobalToAllRooms(globalSettings, globalServices);
+        setSyncNotice('Đã đồng bộ biểu giá mẫu sang tất cả các phòng!');
+        setTimeout(() => setSyncNotice(null), 4000);
+      }
+    });
+  };
+
+  const isServiceChecked = (serviceName: string) => {
+    return (formData.services || []).some(s => s.name === serviceName);
+  };
+
+  const handleToggleTemplateService = (templateService: Service) => {
+    const isChecked = isServiceChecked(templateService.name);
+    let updatedServices = [...(formData.services || [])];
+
+    if (isChecked) {
+      updatedServices = updatedServices.filter(s => s.name !== templateService.name);
+    } else {
+      updatedServices.push({
+        name: templateService.name,
+        price: templateService.price,
+        unit: templateService.unit
+      });
+    }
+
+    setFormData({ ...formData, services: updatedServices });
+  };
+
+  const handleServicePriceChange = (serviceName: string, newPrice: number) => {
+    const updatedServices = (formData.services || []).map(s => {
+      if (s.name === serviceName) {
+        return { ...s, price: newPrice };
+      }
+      return s;
+    });
+    setFormData({ ...formData, services: updatedServices });
+  };
+
+  const handleSelectAllTemplateServices = () => {
+    const existingCustomServices = (formData.services || []).filter(s => 
+      !globalServices.some(gs => gs.name === s.name)
+    );
+    const allTemplateServices = globalServices.map(gs => ({
+      name: gs.name,
+      price: gs.price,
+      unit: gs.unit
+    }));
+    setFormData({
+      ...formData,
+      services: [...allTemplateServices, ...existingCustomServices]
+    });
+  };
+
+  const handleDeselectAllTemplateServices = () => {
+    const existingCustomServices = (formData.services || []).filter(s => 
+      !globalServices.some(gs => gs.name === s.name)
+    );
+    setFormData({
+      ...formData,
+      services: existingCustomServices
+    });
+  };
+
+  const handleAddCustomServiceToRoom = () => {
     if (!newServiceName.trim()) return;
     const updatedServices = [...(formData.services || [])];
     updatedServices.push({
@@ -128,6 +226,11 @@ export default function Rooms() {
     setFormData({ ...formData, services: updatedServices });
   };
 
+  // Identify custom services that aren't in template
+  const customRoomServices = (formData.services || []).filter(s => 
+    !globalServices.some(gs => gs.name === s.name)
+  );
+
   const filteredRooms = rooms
     .filter(room => {
       const matchesSearch = room.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -141,6 +244,14 @@ export default function Rooms() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {/* Toast Notice */}
+      {syncNotice && (
+        <div className="p-3 bg-emerald-100 border border-emerald-300 rounded-xl text-emerald-900 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-sm">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{syncNotice}</span>
+        </div>
+      )}
+
       {/* Search & Filter Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 max-w-2xl">
@@ -169,23 +280,48 @@ export default function Rooms() {
           </div>
         </div>
 
-        <button 
-          onClick={() => openModal()}
-          className="w-full sm:w-auto bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-md shadow-emerald-200/50 shrink-0 text-sm sm:text-base cursor-pointer"
-        >
-          <Plus className="w-5 h-5" />
-          <span>Thêm phòng mới</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={handleSyncAllRoomsGlobal}
+            className="flex-1 sm:flex-none bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 px-3 py-2.5 rounded-xl font-bold flex items-center justify-center gap-1.5 text-xs sm:text-sm transition-colors cursor-pointer"
+            title="Đồng bộ biểu giá điện nước & dịch vụ mẫu sang tất cả phòng"
+          >
+            <RefreshCw className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Đồng bộ giá mẫu</span>
+          </button>
+
+          <button 
+            onClick={() => openModal()}
+            className="flex-1 sm:flex-none bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 active:scale-[0.98] transition-all shadow-md shadow-emerald-200/50 shrink-0 text-xs sm:text-base cursor-pointer"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Thêm phòng mới</span>
+          </button>
+        </div>
       </div>
 
       {/* Grid Rooms */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-6">
-        {filteredRooms.map((room) => {
+        {loading ? (
+          [1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="bg-white rounded-2xl border border-stone-200 p-5 h-48 animate-pulse space-y-3">
+              <div className="flex justify-between items-center">
+                <div className="w-24 h-6 bg-stone-200 rounded-lg" />
+                <div className="w-16 h-5 bg-stone-200 rounded-full" />
+              </div>
+              <div className="w-32 h-4 bg-stone-100 rounded-md" />
+              <div className="w-full h-12 bg-stone-100 rounded-xl" />
+            </div>
+          ))
+        ) : filteredRooms.length > 0 ? (
+          filteredRooms.map((room) => {
           const statusBg = room.status === 'Rented' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                            room.status === 'Empty' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                            'bg-amber-50 text-amber-700 border-amber-200';
           const statusText = room.status === 'Rented' ? 'Đã thuê' :
                              room.status === 'Empty' ? 'Phòng trống' : 'Đang sửa';
+
+          const activeRoomServices = (room.services && room.services.length > 0) ? room.services : globalServices;
 
           return (
             <div key={room.id} className="bg-white rounded-2xl border border-stone-200 p-4 sm:p-5 shadow-2xs hover:shadow-md transition-shadow flex flex-col justify-between space-y-3.5">
@@ -233,22 +369,22 @@ export default function Rooms() {
                   <div className="grid grid-cols-2 gap-2 text-[11px] sm:text-xs font-semibold bg-stone-50 p-2.5 rounded-xl border border-stone-100">
                     <div className="flex items-center gap-1.5 text-stone-700">
                       <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      <span>Điện: <strong className="text-stone-900">{formatNumber(room.electricityRate ?? 3500)}đ</strong></span>
+                      <span>Điện: <strong className="text-stone-900">{formatNumber(room.electricityRate ?? globalSettings.electricityRate ?? 3500)}đ</strong></span>
                     </div>
                     <div className="flex items-center gap-1.5 text-stone-700">
                       <Droplets className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                      <span>Nước: <strong className="text-stone-900">{formatNumber(room.waterRate ?? 20000)}đ</strong></span>
+                      <span>Nước: <strong className="text-stone-900">{formatNumber(room.waterRate ?? globalSettings.waterRate ?? 20000)}đ</strong></span>
                     </div>
                   </div>
 
                   {/* Services tags */}
-                  {room.services && room.services.length > 0 && (
+                  {activeRoomServices.length > 0 && (
                     <div>
                       <span className="text-[10px] sm:text-[11px] font-bold text-stone-500 uppercase tracking-wider block mb-1">
-                        Dịch vụ đính kèm:
+                        Dịch vụ đính kèm ({activeRoomServices.length}):
                       </span>
                       <div className="flex flex-wrap gap-1.5">
-                        {room.services.map((srv, idx) => (
+                        {activeRoomServices.map((srv, idx) => (
                           <span key={idx} className="bg-stone-100 text-stone-800 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md border border-stone-200/60">
                             {srv.name}: {formatNumber(srv.price)}đ
                           </span>
@@ -269,7 +405,7 @@ export default function Rooms() {
               <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-stone-100">
                 <button 
                   onClick={() => openModal(room)}
-                  className="p-2 hover:bg-stone-100 rounded-xl text-stone-700 font-semibold flex items-center gap-1 text-xs"
+                  className="p-2 hover:bg-stone-100 rounded-xl text-stone-700 font-semibold flex items-center gap-1 text-xs cursor-pointer"
                   title="Cài đặt thông tin & Phí dịch vụ"
                 >
                   <Edit2 className="w-4 h-4" />
@@ -286,7 +422,7 @@ export default function Rooms() {
                       }
                     });
                   }}
-                  className="p-2 hover:bg-red-50 rounded-xl text-red-600 font-semibold flex items-center gap-1 text-xs"
+                  className="p-2 hover:bg-red-50 rounded-xl text-red-600 font-semibold flex items-center gap-1 text-xs cursor-pointer"
                   title="Xóa phòng"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -295,15 +431,14 @@ export default function Rooms() {
               </div>
             </div>
           );
-        })}
-        {filteredRooms.length === 0 && (
+        })) : (
           <div className="col-span-full bg-white rounded-2xl border border-stone-200 p-8 sm:p-12 text-center text-stone-500 font-semibold text-sm">
             Không tìm thấy phòng nào phù hợp
           </div>
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modal Settings Room */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4">
           <div onClick={closeModal} className="absolute inset-0 bg-stone-900/50 backdrop-blur-xs" />
@@ -318,6 +453,18 @@ export default function Rooms() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5 overflow-y-auto">
+              {/* Quick Sync Button inside modal */}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSyncRoomWithGlobalDefaults}
+                  className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Nạp theo Biểu giá & Dịch vụ mẫu chung</span>
+                </button>
+              </div>
+
               {/* SECTION 1: Thông tin cơ bản */}
               <div className="space-y-3.5">
                 <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-100 pb-2">
@@ -414,7 +561,7 @@ export default function Rooms() {
                   <div>
                     <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">Đơn giá điện (đ/kWh)</label>
                     <FormattedNumericInput 
-                      value={formData.electricityRate ?? 3500}
+                      value={formData.electricityRate ?? globalSettings.electricityRate ?? 3500}
                       onChange={(val) => setFormData({...formData, electricityRate: val})}
                       className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-stone-900 text-sm"
                     />
@@ -435,7 +582,7 @@ export default function Rooms() {
                       Đơn giá nước ({formData.waterCalculationMethod === 'person' ? 'đ/người' : 'đ/m³'})
                     </label>
                     <FormattedNumericInput 
-                      value={formData.waterRate ?? 20000}
+                      value={formData.waterRate ?? globalSettings.waterRate ?? 20000}
                       onChange={(val) => setFormData({...formData, waterRate: val})}
                       className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-stone-900 text-sm"
                     />
@@ -443,72 +590,153 @@ export default function Rooms() {
                 </div>
               </div>
 
-              {/* SECTION 4: Phí dịch vụ đính kèm */}
+              {/* SECTION 4: Phí dịch vụ đính kèm - TICK CHỌN TỪ DỊCH VỤ MẪU */}
               <div className="space-y-3.5 bg-stone-50 p-3.5 sm:p-4 rounded-xl border border-stone-200/80">
-                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-200 pb-2">
-                  <Wifi className="w-4 h-4 text-emerald-600" />
-                  4. Phí dịch vụ phòng (Wifi, Rác, Vệ sinh...)
-                </h4>
+                <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                  <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Wifi className="w-4 h-4 text-emerald-600" />
+                    4. Phí dịch vụ áp dụng cho phòng này
+                  </h4>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllTemplateServices}
+                      className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 cursor-pointer"
+                    >
+                      [Chọn tất cả]
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeselectAllTemplateServices}
+                      className="text-[11px] font-bold text-stone-500 hover:text-stone-700 cursor-pointer"
+                    >
+                      [Bỏ chọn]
+                    </button>
+                  </div>
+                </div>
 
+                {/* Checkbox list of global template services */}
                 <div className="space-y-2">
-                  {formData.services && formData.services.length > 0 ? (
-                    formData.services.map((srv, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2.5 sm:p-3 bg-white rounded-xl border border-stone-200">
-                        <div>
-                          <span className="font-bold text-stone-900 text-xs sm:text-sm block">{srv.name}</span>
-                          <span className="text-xs font-semibold text-stone-500">
-                            {formatNumber(srv.price)}đ /{srv.unit === 'person' ? 'người' : 'phòng'}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveServiceFromRoom(idx)}
-                          className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Xóa dịch vụ này"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))
+                  <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider block">
+                    Danh sách dịch vụ mẫu (Tick chọn dịch vụ áp dụng):
+                  </span>
+                  
+                  {globalServices.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {globalServices.map((gs) => {
+                        const checked = isServiceChecked(gs.name);
+                        const currentServiceObj = (formData.services || []).find(s => s.name === gs.name);
+                        const displayPrice = currentServiceObj ? currentServiceObj.price : gs.price;
+
+                        return (
+                          <div 
+                            key={gs.id || gs.name}
+                            onClick={() => handleToggleTemplateService(gs)}
+                            className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 select-none ${
+                              checked 
+                                ? 'bg-emerald-50/80 border-emerald-300 text-stone-900 shadow-2xs' 
+                                : 'bg-white border-stone-200/80 text-stone-500 hover:border-stone-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {checked ? (
+                                <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                              ) : (
+                                <Square className="w-4 h-4 text-stone-400 shrink-0" />
+                              )}
+                              <div className="min-w-0">
+                                <span className={`text-xs font-bold block truncate ${checked ? 'text-stone-900' : 'text-stone-600'}`}>
+                                  {gs.name}
+                                </span>
+                                <span className="text-[10px] font-semibold text-stone-500">
+                                  {formatNumber(displayPrice)}đ /{gs.unit === 'person' ? 'người' : 'phòng'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Inline custom price adjustment if checked */}
+                            {checked && (
+                              <div onClick={(e) => e.stopPropagation()} className="w-24">
+                                <FormattedNumericInput
+                                  value={displayPrice}
+                                  onChange={(val) => handleServicePriceChange(gs.name, val)}
+                                  className="w-full px-1.5 py-1 text-xs font-bold bg-white border border-emerald-200 rounded-lg text-right outline-none focus:ring-1 focus:ring-emerald-500"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   ) : (
-                    <p className="text-xs text-stone-500 italic">Chưa có dịch vụ nào đính kèm cho phòng này.</p>
+                    <p className="text-xs text-stone-500 italic bg-white p-3 rounded-xl border border-stone-200">
+                      Chưa có dịch vụ mẫu nào. Hãy bấm "Dịch vụ mẫu" ở trên để tạo.
+                    </p>
                   )}
                 </div>
 
-                {/* Add new service form inline */}
+                {/* Additional Custom Services */}
+                {customRoomServices.length > 0 && (
+                  <div className="pt-2 border-t border-stone-200/60 space-y-2">
+                    <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider block">
+                      Dịch vụ tùy chỉnh riêng cho phòng này:
+                    </span>
+                    {customRoomServices.map((srv, idx) => {
+                      const actualIdx = (formData.services || []).findIndex(s => s.name === srv.name);
+                      return (
+                        <div key={idx} className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-stone-200">
+                          <div>
+                            <span className="font-bold text-stone-900 text-xs block">{srv.name}</span>
+                            <span className="text-[11px] font-semibold text-stone-500">
+                              {formatNumber(srv.price)}đ /{srv.unit === 'person' ? 'người' : 'phòng'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveServiceFromRoom(actualIdx)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            title="Xóa dịch vụ này"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Add new custom service form inline */}
                 <div className="pt-3 border-t border-stone-200/60 space-y-2">
-                  <span className="text-xs font-bold text-stone-700 block">Thêm dịch vụ cho phòng:</span>
-                  <div className="flex flex-col sm:flex-row gap-2">
+                  <span className="text-xs font-bold text-stone-700 block">Thêm dịch vụ khác cho riêng phòng này:</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
                     <input 
-                      placeholder="Tên dịch vụ (VD: Wifi, Rác)"
+                      placeholder="Tên dịch vụ (VD: Thang máy, Gửi xe)"
                       value={newServiceName}
                       onChange={(e) => setNewServiceName(e.target.value)}
-                      className="flex-1 px-3 py-2 text-xs sm:text-sm bg-white border border-stone-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-stone-900"
+                      className="sm:col-span-5 px-3 py-2 text-xs sm:text-sm bg-white border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-stone-900"
                     />
-                    <div className="flex gap-2">
-                      <FormattedNumericInput 
-                        placeholder="Giá tiền (đ)"
-                        value={newServicePrice}
-                        onChange={(val) => setNewServicePrice(val)}
-                        className="w-28 sm:w-32 px-3 py-2 text-xs sm:text-sm bg-white border border-stone-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-stone-900"
-                      />
-                      <select
-                        value={newServiceUnit}
-                        onChange={(e) => setNewServiceUnit(e.target.value as any)}
-                        className="px-2 py-2 text-xs sm:text-sm bg-white border border-stone-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-stone-900"
-                      >
-                        <option value="room">/ phòng</option>
-                        <option value="person">/ người</option>
-                      </select>
-                      <button
-                        type="button"
-                        onClick={handleAddServiceToRoom}
-                        className="px-3 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1 shrink-0 text-xs"
-                      >
-                        <PlusCircle className="w-4 h-4" />
-                        <span>Thêm</span>
-                      </button>
-                    </div>
+                    <FormattedNumericInput 
+                      placeholder="Giá tiền (đ)"
+                      value={newServicePrice}
+                      onChange={(val) => setNewServicePrice(val)}
+                      className="sm:col-span-3 px-3 py-2 text-xs sm:text-sm bg-white border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-stone-900"
+                    />
+                    <select
+                      value={newServiceUnit}
+                      onChange={(e) => setNewServiceUnit(e.target.value as any)}
+                      className="sm:col-span-2 px-2 py-2 text-xs sm:text-sm bg-white border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-stone-900 cursor-pointer"
+                    >
+                      <option value="room">/ phòng</option>
+                      <option value="person">/ người</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleAddCustomServiceToRoom}
+                      className="sm:col-span-2 px-3 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all flex items-center justify-center gap-1 shrink-0 text-xs cursor-pointer shadow-2xs"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      <span>Thêm</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -529,13 +757,13 @@ export default function Rooms() {
                 <button 
                   type="button" 
                   onClick={closeModal}
-                  className="flex-1 py-2.5 px-4 border border-stone-200 text-stone-700 font-bold rounded-xl hover:bg-stone-50 transition-colors text-sm"
+                  className="flex-1 py-2.5 px-4 border border-stone-200 text-stone-700 font-bold rounded-xl hover:bg-stone-50 transition-colors text-sm cursor-pointer"
                 >
                   Hủy
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 py-2.5 px-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-200 text-sm"
+                  className="flex-1 py-2.5 px-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-200 text-sm cursor-pointer"
                 >
                   {editingRoom ? 'Lưu thay đổi' : 'Tạo phòng'}
                 </button>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { firebaseService } from '../firebaseService';
-import { Room, UtilityReading, Invoice, Service, AppSettings, formatNumber, naturalCompare } from '../types';
-import { Plus, Zap, Droplets, FileText, Calculator, Settings, X, Trash2, CreditCard } from 'lucide-react';
+import { Room, UtilityReading, Service, AppSettings, formatNumber, naturalCompare } from '../types';
+import { Plus, Zap, Droplets, Calculator, Settings, X, Trash2, CreditCard, RefreshCw, CheckCircle2, Wifi } from 'lucide-react';
 import FormattedNumericInput from '../components/FormattedNumericInput';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -16,7 +16,8 @@ export default function Utilities() {
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -48,11 +49,20 @@ export default function Utilities() {
     createdAt: new Date().toISOString()
   });
 
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
+    let readingsLoaded = false;
     const unsubRooms = firebaseService.subscribeRooms(setRooms);
-    const unsubReadings = firebaseService.subscribeUtilityReadings(setReadings);
+    const unsubReadings = firebaseService.subscribeUtilityReadings((r) => {
+      setReadings(r);
+      if (!readingsLoaded) {
+        readingsLoaded = true;
+        setLoading(false);
+      }
+    });
     const unsubServices = firebaseService.subscribeServices(setGlobalServices);
-    firebaseService.getSettings().then(s => {
+    const unsubSettings = firebaseService.subscribeSettings((s) => {
       setSettings(s);
       setFormData(prev => ({ ...prev, waterCalculationMethod: s.waterCalculationMethod }));
     });
@@ -60,6 +70,7 @@ export default function Utilities() {
       unsubRooms();
       unsubReadings();
       unsubServices();
+      unsubSettings();
     };
   }, []);
 
@@ -80,15 +91,29 @@ export default function Utilities() {
     });
   };
 
-  const handleAddService = async (e: React.FormEvent) => {
+  const handleAddGlobalService = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newService.name.trim()) return;
     try {
       await firebaseService.addService(newService);
-      setIsServiceModalOpen(false);
       setNewService({ name: '', price: 0, unit: 'room' });
+      setSyncNotice('Đã thêm dịch vụ mẫu mới!');
+      setTimeout(() => setSyncNotice(null), 3000);
     } catch (error) {
       console.error("Error adding service:", error);
     }
+  };
+
+  const handleSaveSettingsAndSync = async (syncAllRooms: boolean) => {
+    await firebaseService.updateSettings(settings);
+    if (syncAllRooms) {
+      await firebaseService.syncGlobalToAllRooms(settings, globalServices);
+      setSyncNotice('Đã lưu cài đặt & đồng bộ thành công sang tất cả các phòng!');
+    } else {
+      setSyncNotice('Đã lưu cài đặt mẫu!');
+    }
+    setIsSettingsOpen(false);
+    setTimeout(() => setSyncNotice(null), 4000);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -195,25 +220,25 @@ ${bankInfo}
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {/* Toast Notice */}
+      {syncNotice && (
+        <div className="p-3 bg-emerald-100 border border-emerald-300 rounded-xl text-emerald-900 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-sm">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{syncNotice}</span>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center justify-between sm:justify-start gap-2">
           <h2 className="text-lg sm:text-xl font-bold text-stone-900">Chốt điện nước & Hóa đơn</h2>
-          <div className="flex items-center gap-1">
-            <button 
-              onClick={() => setIsServiceModalOpen(true)}
-              className="px-2.5 py-1.5 hover:bg-stone-100 bg-white border border-stone-200 rounded-lg text-emerald-700 flex items-center gap-1 text-xs font-bold"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Dịch vụ mẫu</span>
-            </button>
-            <button 
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-1.5 hover:bg-stone-100 bg-white border border-stone-200 rounded-lg text-stone-600"
-              title="Biểu giá chung"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-          </div>
+          <button 
+            onClick={() => setIsSettingsOpen(true)}
+            className="px-3 py-2 bg-white border border-stone-200 hover:bg-stone-50 rounded-xl text-stone-800 flex items-center gap-2 text-xs sm:text-sm font-bold shadow-2xs transition-colors cursor-pointer"
+            title="Cài đặt Biểu giá, Dịch vụ mẫu & Ngân hàng"
+          >
+            <Settings className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Cài đặt biểu giá & Dịch vụ</span>
+          </button>
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
@@ -302,7 +327,7 @@ ${bankInfo}
                                     }
                                   });
                                 }}
-                                className="p-1.5 hover:bg-red-50 rounded-lg text-red-600"
+                                className="p-1.5 hover:bg-red-50 rounded-lg text-red-600 cursor-pointer"
                                 title="Xóa chỉ số"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -315,7 +340,15 @@ ${bankInfo}
                   );
                 })}
 
-              {readings.length === 0 && (
+              {loading && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-stone-400 font-semibold animate-pulse">
+                    Đang tải dữ liệu chốt số...
+                  </td>
+                </tr>
+              )}
+
+              {!loading && readings.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-center text-stone-500 font-semibold">
                     Chưa có bản ghi chốt số nào
@@ -328,7 +361,11 @@ ${bankInfo}
 
         {/* Mobile View */}
         <div className="md:hidden divide-y divide-stone-100">
-          {readings.map((reading) => {
+          {loading ? (
+            <div className="p-6 text-center text-stone-400 font-semibold animate-pulse text-sm">
+              Đang tải dữ liệu chốt số...
+            </div>
+          ) : readings.map((reading) => {
             const room = rooms.find(r => r.id === reading.roomId);
             const elecUsage = reading.electricityEnd - reading.electricityStart;
             const waterUsage = reading.waterEnd - reading.waterStart;
@@ -478,124 +515,187 @@ ${bankInfo}
         </div>
       )}
 
-      {/* Service Modal */}
-      {isServiceModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4">
-          <div onClick={() => setIsServiceModalOpen(false)} className="absolute inset-0 bg-stone-900/50 backdrop-blur-xs" />
-          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-stone-200 max-h-[92vh] flex flex-col">
-            <div className="p-4 sm:p-6 border-b border-stone-100 flex justify-between items-center bg-stone-50/50">
-              <h3 className="text-lg sm:text-xl font-bold text-stone-900">Quản lý dịch vụ chung</h3>
-              <button onClick={() => setIsServiceModalOpen(false)} className="p-2 hover:bg-stone-200/60 rounded-xl"><X className="w-5 h-5 text-stone-500" /></button>
-            </div>
-            <div className="p-4 sm:p-6 space-y-5 overflow-y-auto">
-              <div className="space-y-2.5">
-                {globalServices.map(s => (
-                  <div key={s.id} className="flex items-center justify-between p-3 bg-stone-50 rounded-xl border border-stone-200">
-                    <div>
-                      <p className="font-bold text-stone-900 text-sm">{s.name}</p>
-                      <p className="text-xs font-semibold text-stone-500">{formatNumber(s.price)}đ / {s.unit === 'person' ? 'người' : 'phòng'}</p>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        setConfirmConfig({
-                          isOpen: true,
-                          title: 'Xác nhận xóa',
-                          message: `Xóa dịch vụ ${s.name}?`,
-                          onConfirm: async () => {
-                            await firebaseService.deleteService(s.id!);
-                          }
-                        });
-                      }}
-                      className="p-1.5 hover:bg-red-50 rounded-lg text-red-600 transition-opacity"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <form onSubmit={handleAddService} className="pt-4 border-t border-stone-100 space-y-3.5">
-                <h4 className="font-bold text-stone-900 text-sm">Thêm dịch vụ mẫu</h4>
-                <input required placeholder="Tên dịch vụ (Wifi, Rác...)" value={newService.name} onChange={(e) => setNewService({...newService, name: e.target.value})} className="w-full px-3.5 py-2 border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-stone-900 text-sm" />
-                <div className="grid grid-cols-2 gap-3">
-                  <FormattedNumericInput placeholder="Giá tiền" value={newService.price} onChange={(val) => setNewService({...newService, price: val})} className="w-full px-3.5 py-2 border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-stone-900 text-sm" />
-                  <select value={newService.unit} onChange={(e) => setNewService({...newService, unit: e.target.value as any})} className="w-full px-3.5 py-2 border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-stone-900 text-sm">
-                    <option value="room">Theo phòng</option>
-                    <option value="person">Theo người</option>
-                  </select>
-                </div>
-                <button type="submit" className="w-full py-2.5 px-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors text-sm">Thêm dịch vụ mẫu</button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Settings Modal */}
+      {/* COMBINED SINGLE SETTINGS MODAL (Biểu giá + Dịch vụ mẫu + Ngân hàng) */}
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4">
           <div onClick={() => setIsSettingsOpen(false)} className="absolute inset-0 bg-stone-900/50 backdrop-blur-xs" />
-          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-stone-200 max-h-[92vh] flex flex-col">
-            <div className="p-4 sm:p-6 border-b border-stone-100 flex justify-between items-center bg-stone-50/50">
-              <h3 className="text-lg sm:text-xl font-bold text-stone-900">Biểu giá & Ngân hàng</h3>
+          <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden border border-stone-200 max-h-[92vh] flex flex-col">
+            <div className="p-4 sm:p-6 border-b border-stone-100 flex justify-between items-center bg-stone-50/50 shrink-0">
+              <div className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-lg sm:text-xl font-bold text-stone-900">Cài đặt biểu giá, Dịch vụ mẫu & Ngân hàng</h3>
+              </div>
               <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-stone-200/60 rounded-xl"><X className="w-5 h-5 text-stone-500" /></button>
             </div>
-            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto">
-              <div>
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">Giá điện mặc định (đ/kWh)</label>
-                <FormattedNumericInput value={settings.electricityRate} onChange={(val) => setSettings({...settings, electricityRate: val})} className="w-full px-3.5 py-2 border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-stone-900 text-sm" />
+
+            <div className="p-4 sm:p-6 space-y-6 overflow-y-auto">
+              {/* SECTION 1: Biểu giá Điện & Nước */}
+              <div className="space-y-3.5 bg-stone-50 p-4 rounded-xl border border-stone-200">
+                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-200/80 pb-2">
+                  <Zap className="w-4 h-4 text-amber-500" />
+                  1. Biểu giá Điện & Nước mặc định
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">Giá điện mặc định (đ/kWh)</label>
+                    <FormattedNumericInput value={settings.electricityRate} onChange={(val) => setSettings({...settings, electricityRate: val})} className="w-full px-3.5 py-2 bg-white border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-stone-900 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">Hình thức tính nước</label>
+                    <select 
+                      value={settings.waterCalculationMethod || 'usage'}
+                      onChange={(e) => setSettings({...settings, waterCalculationMethod: e.target.value as any})}
+                      className="w-full px-3.5 py-2 bg-white border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-stone-900 text-sm"
+                    >
+                      <option value="usage">Tính theo khối (m³)</option>
+                      <option value="person">Tính theo đầu người</option>
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                      Giá nước mặc định ({settings.waterCalculationMethod === 'person' ? 'đ/người' : 'đ/m³'})
+                    </label>
+                    <FormattedNumericInput value={settings.waterRate} onChange={(val) => setSettings({...settings, waterRate: val})} className="w-full px-3.5 py-2 bg-white border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-stone-900 text-sm" />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">Giá nước mặc định (đ/đầu người hoặc m³)</label>
-                <FormattedNumericInput value={settings.waterRate} onChange={(val) => setSettings({...settings, waterRate: val})} className="w-full px-3.5 py-2 border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-stone-900 text-sm" />
+
+              {/* SECTION 2: Danh sách Dịch vụ mẫu */}
+              <div className="space-y-3.5 bg-stone-50 p-4 rounded-xl border border-stone-200">
+                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-200/80 pb-2">
+                  <Wifi className="w-4 h-4 text-emerald-600" />
+                  2. Danh sách Dịch vụ mẫu chung (Wifi, Rác, Vệ sinh...)
+                </h4>
+
+                {/* Service List */}
+                <div className="space-y-2">
+                  {globalServices.length > 0 ? (
+                    globalServices.map(s => (
+                      <div key={s.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-stone-200">
+                        <div>
+                          <p className="font-bold text-stone-900 text-xs sm:text-sm">{s.name}</p>
+                          <p className="text-xs font-semibold text-stone-500">{formatNumber(s.price)}đ / {s.unit === 'person' ? 'người' : 'phòng'}</p>
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setConfirmConfig({
+                              isOpen: true,
+                              title: 'Xác nhận xóa',
+                              message: `Xóa dịch vụ mẫu ${s.name}?`,
+                              onConfirm: async () => {
+                                await firebaseService.deleteService(s.id!);
+                              }
+                            });
+                          }}
+                          className="p-1.5 hover:bg-red-50 rounded-lg text-red-600 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-stone-500 italic p-2">Chưa có dịch vụ mẫu nào.</p>
+                  )}
+                </div>
+
+                {/* Add Service Inline Form */}
+                <form onSubmit={handleAddGlobalService} className="pt-3 border-t border-stone-200/70 space-y-2">
+                  <span className="text-xs font-bold text-stone-700 block">Thêm dịch vụ mẫu mới:</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                    <input 
+                      required 
+                      placeholder="Tên dịch vụ mẫu (Wifi, Rác...)" 
+                      value={newService.name} 
+                      onChange={(e) => setNewService({...newService, name: e.target.value})} 
+                      className="sm:col-span-5 px-3 py-2 border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-stone-900 text-xs sm:text-sm bg-white" 
+                    />
+                    <FormattedNumericInput 
+                      placeholder="Giá tiền (đ)" 
+                      value={newService.price} 
+                      onChange={(val) => setNewService({...newService, price: val})} 
+                      className="sm:col-span-3 px-3 py-2 border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-stone-900 text-xs sm:text-sm bg-white" 
+                    />
+                    <select 
+                      value={newService.unit} 
+                      onChange={(e) => setNewService({...newService, unit: e.target.value as any})} 
+                      className="sm:col-span-2 px-2 py-2 border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-stone-900 text-xs sm:text-sm bg-white cursor-pointer"
+                    >
+                      <option value="room">/ phòng</option>
+                      <option value="person">/ người</option>
+                    </select>
+                    <button 
+                      type="submit" 
+                      className="sm:col-span-2 px-3 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all text-xs cursor-pointer flex items-center justify-center gap-1 shadow-2xs shrink-0"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Thêm</span>
+                    </button>
+                  </div>
+                </form>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1 flex items-center gap-2">
+
+              {/* SECTION 3: Thông tin Tài khoản Ngân hàng */}
+              <div className="space-y-3.5 bg-stone-50 p-4 rounded-xl border border-stone-200">
+                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-200/80 pb-2">
                   <CreditCard className="w-4 h-4 text-emerald-600" />
-                  Thông tin chuyển khoản
-                </label>
-                <div className="space-y-3 p-3.5 bg-stone-50 rounded-xl border border-stone-200">
+                  3. Thông tin Chuyển khoản Ngân hàng
+                </h4>
+                <div className="space-y-3">
                   <div>
                     <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Tên ngân hàng</label>
                     <input 
                       type="text"
                       value={settings.bankName || ''}
                       onChange={(e) => setSettings({...settings, bankName: e.target.value})}
-                      className="w-full px-3 py-1.5 border border-stone-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 text-xs sm:text-sm font-semibold text-stone-900"
+                      className="w-full px-3.5 py-2 bg-white border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-xs sm:text-sm font-semibold text-stone-900"
                       placeholder="VD: Vietcombank, MB Bank..."
                     />
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Số tài khoản</label>
-                    <input 
-                      type="text"
-                      value={settings.bankAccountNumber || ''}
-                      onChange={(e) => setSettings({...settings, bankAccountNumber: e.target.value})}
-                      className="w-full px-3 py-1.5 border border-stone-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 text-xs sm:text-sm font-bold text-stone-900"
-                      placeholder="Nhập số tài khoản..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Chủ tài khoản</label>
-                    <input 
-                      type="text"
-                      value={settings.bankAccountName || ''}
-                      onChange={(e) => setSettings({...settings, bankAccountName: e.target.value})}
-                      className="w-full px-3 py-1.5 border border-stone-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 text-xs sm:text-sm font-bold text-stone-900"
-                      placeholder="Tên người nhận..."
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Số tài khoản</label>
+                      <input 
+                        type="text"
+                        value={settings.bankAccountNumber || ''}
+                        onChange={(e) => setSettings({...settings, bankAccountNumber: e.target.value})}
+                        className="w-full px-3.5 py-2 bg-white border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-xs sm:text-sm font-bold text-stone-900"
+                        placeholder="Nhập số tài khoản..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Chủ tài khoản</label>
+                      <input 
+                        type="text"
+                        value={settings.bankAccountName || ''}
+                        onChange={(e) => setSettings({...settings, bankAccountName: e.target.value})}
+                        className="w-full px-3.5 py-2 bg-white border border-stone-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-xs sm:text-sm font-bold text-stone-900"
+                        placeholder="Tên người nhận..."
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
-              <button 
-                onClick={async () => {
-                  await firebaseService.updateSettings(settings);
-                  setIsSettingsOpen(false);
-                }}
-                className="w-full py-2.5 px-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors text-sm"
-              >
-                Lưu cài đặt
-              </button>
+
+              {/* Action Buttons */}
+              <div className="space-y-2 pt-2 border-t border-stone-100">
+                <button 
+                  type="button"
+                  onClick={() => handleSaveSettingsAndSync(true)}
+                  className="w-full py-3 px-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-200 cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4 shrink-0" />
+                  <span>Lưu & Đồng bộ sang TẤT CẢ các phòng</span>
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={() => handleSaveSettingsAndSync(false)}
+                  className="w-full py-2.5 px-4 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl transition-colors text-xs cursor-pointer"
+                >
+                  Chỉ lưu cài đặt mẫu
+                </button>
+              </div>
             </div>
           </div>
         </div>

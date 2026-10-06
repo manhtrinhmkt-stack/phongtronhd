@@ -9,6 +9,7 @@ import UtilityReadingModal from '../components/UtilityReadingModal';
 export default function Dashboard() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [isReadingModalOpen, setIsReadingModalOpen] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -24,16 +25,75 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    const unsubRooms = firebaseService.subscribeRooms(setRooms);
+    let roomsLoaded = false;
+    let invoicesLoaded = false;
+
+    const checkDone = () => {
+      if (roomsLoaded && invoicesLoaded) {
+        setLoading(false);
+      }
+    };
+
+    const unsubRooms = firebaseService.subscribeRooms((r) => {
+      setRooms(r);
+      roomsLoaded = true;
+      checkDone();
+    });
+
     const unsubInvoices = firebaseService.subscribeInvoices((invs) => {
       setInvoices(invs);
       setSelectedInvoice(prev => prev ? invs.find(i => i.id === prev.id) || null : null);
+      invoicesLoaded = true;
+      checkDone();
     });
+
     return () => {
       unsubRooms();
       unsubInvoices();
     };
   }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-4 sm:space-y-8 animate-pulse">
+        {/* Banner Skeleton */}
+        <div className="h-28 bg-stone-200/80 rounded-2xl" />
+
+        {/* Stats Grid Skeleton */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-white p-4 rounded-2xl border border-stone-200 h-28 flex flex-col justify-between">
+              <div className="w-8 h-8 bg-stone-200 rounded-xl" />
+              <div className="space-y-1.5">
+                <div className="w-20 h-3 bg-stone-200 rounded-md" />
+                <div className="w-12 h-6 bg-stone-300 rounded-md" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Recent activity & status skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
+          <div className="bg-white rounded-2xl border border-stone-200 p-6 space-y-4">
+            <div className="w-32 h-5 bg-stone-200 rounded-md" />
+            <div className="space-y-3">
+              <div className="w-full h-12 bg-stone-100 rounded-xl" />
+              <div className="w-full h-12 bg-stone-100 rounded-xl" />
+              <div className="w-full h-12 bg-stone-100 rounded-xl" />
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-stone-200 p-6 space-y-4">
+            <div className="w-32 h-5 bg-stone-200 rounded-md" />
+            <div className="space-y-4 pt-2">
+              <div className="w-full h-4 bg-stone-100 rounded-full" />
+              <div className="w-full h-4 bg-stone-100 rounded-full" />
+              <div className="w-full h-4 bg-stone-100 rounded-full" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const rentedRoomsCount = rooms.filter(r => r.status === 'Rented').length;
   const emptyRoomsCount = rooms.filter(r => r.status === 'Empty').length;

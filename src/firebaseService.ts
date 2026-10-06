@@ -6,11 +6,11 @@ import {
   doc, 
   onSnapshot, 
   query, 
-  where, 
   orderBy,
   getDocs,
   getDoc,
-  setDoc
+  setDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Room, Tenant, Contract, UtilityReading, Service, Invoice, Expense, AppSettings } from './types';
@@ -201,6 +201,24 @@ export const firebaseService = {
   },
 
   // Settings
+  subscribeSettings: (callback: (settings: AppSettings) => void) => {
+    return onSnapshot(doc(db, 'settings', 'global'), (snapshot) => {
+      if (snapshot.exists()) {
+        callback(snapshot.data() as AppSettings);
+      } else {
+        const defaultSettings: AppSettings = { 
+          electricityRate: 3500, 
+          waterRate: 20000,
+          waterCalculationMethod: 'usage',
+          bankName: '',
+          bankAccountNumber: '',
+          bankAccountName: ''
+        };
+        setDoc(doc(db, 'settings', 'global'), defaultSettings);
+        callback(defaultSettings);
+      }
+    }, (err) => handleFirestoreError(err, 'subscribe', 'settings/global'));
+  },
   getSettings: async (): Promise<AppSettings> => {
     try {
       const docRef = doc(db, 'settings', 'global');
@@ -232,5 +250,31 @@ export const firebaseService = {
     try {
       await setDoc(doc(db, 'settings', 'global'), settings);
     } catch (err) { handleFirestoreError(err, 'update', 'settings/global'); }
+  },
+
+  // Sync Global Settings & Global Template Services to ALL Rooms in Firestore
+  syncGlobalToAllRooms: async (settings: AppSettings, servicesList: Service[]) => {
+    try {
+      const roomDocs = await getDocs(collection(db, 'rooms'));
+      const batch = writeBatch(db);
+      const formattedServices = servicesList.map(s => ({
+        name: s.name,
+        price: s.price,
+        unit: s.unit
+      }));
+
+      roomDocs.forEach((roomDoc) => {
+        batch.update(roomDoc.ref, {
+          electricityRate: settings.electricityRate ?? 3500,
+          waterRate: settings.waterRate ?? 20000,
+          waterCalculationMethod: settings.waterCalculationMethod || 'usage',
+          services: formattedServices
+        });
+      });
+
+      await batch.commit();
+    } catch (err) {
+      handleFirestoreError(err, 'syncGlobalToAllRooms', 'rooms');
+    }
   }
 };
