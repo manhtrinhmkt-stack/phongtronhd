@@ -87,6 +87,30 @@ export const firebaseService = {
       return docRef;
     } catch (err) { handleFirestoreError(err, 'add', 'contracts'); }
   },
+  updateContract: async (id: string, contract: Partial<Contract>, previousRoomId?: string) => {
+    try {
+      await updateDoc(doc(db, 'contracts', id), contract);
+      // If room changed
+      if (contract.roomId && previousRoomId && contract.roomId !== previousRoomId) {
+        await updateDoc(doc(db, 'rooms', previousRoomId), {
+          status: 'Empty',
+          currentTenantId: null,
+          currentContractId: null
+        });
+        await updateDoc(doc(db, 'rooms', contract.roomId), {
+          status: contract.status === 'Terminated' || contract.status === 'Expired' ? 'Empty' : 'Rented',
+          currentTenantId: contract.status === 'Terminated' || contract.status === 'Expired' ? null : contract.tenantId,
+          currentContractId: contract.status === 'Terminated' || contract.status === 'Expired' ? null : id
+        });
+      } else if (contract.roomId && contract.tenantId) {
+        await updateDoc(doc(db, 'rooms', contract.roomId), {
+          status: contract.status === 'Terminated' || contract.status === 'Expired' ? 'Empty' : 'Rented',
+          currentTenantId: contract.status === 'Terminated' || contract.status === 'Expired' ? null : contract.tenantId,
+          currentContractId: contract.status === 'Terminated' || contract.status === 'Expired' ? null : id
+        });
+      }
+    } catch (err) { handleFirestoreError(err, 'update', `contracts/${id}`); }
+  },
   deleteContract: async (id: string, roomId: string) => {
     try {
       await deleteDoc(doc(db, 'contracts', id));

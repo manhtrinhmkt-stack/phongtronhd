@@ -8,8 +8,7 @@ import {
   AlertCircle, 
   Loader2
 } from 'lucide-react';
-import { motion } from 'motion/react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { auth } from '../firebase';
 
 export default function Login() {
@@ -66,10 +65,10 @@ export default function Login() {
 
     setIsSubmitting(true);
     try {
+      await setPersistence(auth, browserLocalPersistence);
       await signInWithEmailAndPassword(auth, internalEmail, password);
     } catch (error: any) {
       const code = error?.code || '';
-      // Avoid console.error for expected invalid user credential attempts
       if (code !== 'auth/invalid-credential' && code !== 'auth/user-not-found' && code !== 'auth/wrong-password') {
         console.warn('Sign-in failed:', code || error);
       }
@@ -81,12 +80,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center p-4 selection:bg-emerald-500 selection:text-white">
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-stone-200 relative overflow-hidden"
-      >
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-stone-200 relative overflow-hidden">
         {/* Decorative background glow */}
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-100 rounded-full blur-3xl pointer-events-none opacity-60" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-emerald-50 rounded-full blur-3xl pointer-events-none opacity-60" />
@@ -97,26 +91,22 @@ export default function Login() {
             <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
               <Home className="w-8 h-8 text-emerald-600" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">RoomMaster</h1>
-            <p className="text-sm text-stone-500 mt-1">Đăng nhập vào hệ thống quản lý phòng trọ</p>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">RoomMaster</h1>
+            <p className="text-sm font-semibold text-stone-500 mt-1">Đăng nhập vào hệ thống quản lý phòng trọ</p>
           </div>
 
           {/* Error Message */}
           {errorMessage && (
-            <motion.div 
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3 text-red-700 text-sm"
-            >
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3 text-red-700 text-sm font-semibold">
               <AlertCircle className="w-5 h-5 shrink-0 text-red-500 mt-0.5" />
               <span className="leading-relaxed">{errorMessage}</span>
-            </motion.div>
+            </div>
           )}
 
           {/* Login Form */}
           <form onSubmit={handleLogin} className="space-y-5" noValidate>
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2">
                 Tên đăng nhập
               </label>
               <div className="relative">
@@ -133,14 +123,14 @@ export default function Login() {
                   placeholder="Nhập tên đăng nhập (VD: admin)"
                   autoComplete="username"
                   disabled={isSubmitting}
-                  className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-stone-900 text-sm placeholder-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all disabled:opacity-60"
+                  className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-stone-900 text-sm font-bold placeholder:font-normal placeholder-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all disabled:opacity-60"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2">
                 Mật khẩu
               </label>
               <div className="relative">
@@ -157,7 +147,7 @@ export default function Login() {
                   placeholder="••••••••"
                   autoComplete="current-password"
                   disabled={isSubmitting}
-                  className="w-full pl-11 pr-11 py-3 bg-stone-50 border border-stone-200 rounded-xl text-stone-900 text-sm placeholder-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all disabled:opacity-60"
+                  className="w-full pl-11 pr-11 py-3 bg-stone-50 border border-stone-200 rounded-xl text-stone-900 text-sm font-bold placeholder-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all disabled:opacity-60"
                   required
                 />
                 <button
@@ -174,7 +164,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full mt-2 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full mt-2 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200/60 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <>
@@ -188,12 +178,12 @@ export default function Login() {
           </form>
 
           <div className="mt-8 pt-6 border-t border-stone-100 text-center space-y-2">
-            <p className="text-xs text-stone-500 font-medium">
+            <p className="text-xs text-stone-500 font-semibold">
               Tài khoản hệ thống do Quản trị viên cấp
             </p>
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
